@@ -1,0 +1,6 @@
+[submodule "kanka/src"]
+	path = kanka/src
+	url = https://github.com/owlchester/kanka.git
+[submodule "notebookai/src"]
+	path = notebookai/src
+	url = https://github.com/indentlabs/notebook.git

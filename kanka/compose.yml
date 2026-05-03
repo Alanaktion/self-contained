@@ -1,0 +1,102 @@
+services:
+  kanka-db:
+    image: mariadb:10.11
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mariadb:/var/lib/mysql
+    environment:
+      - MARIADB_DATABASE=kanka
+      - MARIADB_USER=kanka
+      - MARIADB_PASSWORD=${DB_PASSWORD}
+      - MARIADB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  kanka-redis:
+    image: redis:7-alpine
+    volumes:
+      - redis:/data
+    restart: unless-stopped
+
+  kanka-app:
+    image: ghcr.io/alanaktion/kanka:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      kanka-db:
+        condition: service_healthy
+      kanka-redis:
+        condition: service_started
+    volumes:
+      - kanka-storage:/var/www/html/storage
+    environment:
+      - APP_NAME=Kanka
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - APP_URL=https://kanka.example.com
+      - FRONT_DOMAIN=kanka.example.com
+      - DB_TYPE=mysql
+      - DB_HOST=kanka-db
+      - DB_DATABASE=kanka
+      - DB_USERNAME=kanka
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=kanka-redis
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - QUEUE_CONNECTION=redis
+      - FILESYSTEM_DRIVER=local
+    networks:
+      - default
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.kanka.rule=Host(`kanka.example.com`)
+      - traefik.http.routers.kanka.entrypoints=websecure
+      - traefik.http.services.kanka.loadbalancer.server.port=8080
+    restart: unless-stopped
+
+  kanka-worker:
+    image: ghcr.io/alanaktion/kanka:latest
+    command: php artisan queue:work --tries=3 --timeout=90
+    depends_on:
+      - kanka-app
+    volumes:
+      - kanka-storage:/var/www/html/storage
+    environment:
+      - APP_ENV=production
+      - DB_HOST=kanka-db
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=kanka-redis
+      - QUEUE_CONNECTION=redis
+    networks:
+      - default
+    restart: unless-stopped
+
+  kanka-cron:
+    image: ghcr.io/alanaktion/kanka:latest
+    command: sh -c "while [ true ]; do php artisan schedule:run --no-interaction; sleep 60; done"
+    depends_on:
+      - kanka-app
+    volumes:
+      - kanka-storage:/var/www/html/storage
+    environment:
+      - APP_ENV=production
+      - DB_HOST=kanka-db
+      - DB_PASSWORD=${DB_PASSWORD}
+    networks:
+      - default
+    restart: unless-stopped
+
+volumes:
+  kanka-storage:
+  mariadb:
+  redis:
+
+networks:
+  proxy:
+    external: true

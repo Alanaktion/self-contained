@@ -1,0 +1,20 @@
+services:
+  notebook:
+    image: ghcr.io/alanaktion/notebookai:latest
+    build:
+      context: src
+      dockerfile: Dockerfile
+      labels:
+        - org.opencontainers.image.source=https://github.com/Alanaktion/self-contained
+    environment:
+      - RAILS_ENV=development
+      - RAILWAY_PUBLIC_DOMAIN=notebook.example.com
+    volumes:
+      - ./notebook/development.sqlite3:/home/notebookai/db/development.sqlite3
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.services.notebook.loadbalancer.server.port=3000
+      - traefik.http.routers.notebook.rule=Host(`notebook.example.com`)
